@@ -1,0 +1,91 @@
+#!/bin/bash
+# Genomic Assembly Pipeline: Leucocarbo bransfieldensis
+# Combining ONT (Nanopore) + Illumina reads
+
+### PRE-PROCESSING ###
+
+# 1. Combine ONT reads
+cat fastq_pass/*.fastq.gz > Combined_reads_ont.fastq.gz
+
+# 2. Quality control - ONT
+NanoPlot --fastq Combined_reads_ont.fastq.gz --loglength -o NanoPlot_Report
+
+# 3. Filtering ONT reads
+gunzip -c Combined_reads_ont.fastq.gz | \
+NanoFilt -q 10 -l 1000 | \
+gzip > Combined_reads_ont_filtered.fastq.gz
+
+# 4. Quality Control – Illumina
+fastp -i CJ714_CJ715_R1.trimmed.fastq.gz \ 
+-I CJ714_CJ715_R2.trimmed.fastq.gz \ 
+-o CJ714_CJ715_R1_trimmed.fastq.gz \ 
+-O CJ714_CJ715_R2_trimmed.fastq.gz\ 
+--html fastp_report.html \ 
+--json fastp_report.json
+
+### INITIAL ASSEMBLY ###
+
+# 5. Mounting with Flye (ONT)
+flye --nano-hq combined_reads_ont_filtered.fastq.gz \ 
+--genome-size 1.2g\ 
+--out-dir flye_assembly \ 
+--threads 32
+
+### POLISHING ###
+
+# 6. Polishing with Medaka (ONT)
+medaka_consensus -i combined_reads_ont_filtered.fastq.gz \ 
+-d flye_assembly/assembly.fasta\ 
+-o medaka_final_polish\ 
+-t 32
+
+# 7. Polishing with Pilon (Illumina)
+#7.1 Alignment
+bwa index medaka_final_polish/consensus.fasta
+bwa mem -t 32 medaka_final_polish/consensus.fasta \ 
+CJ714_CJ715_R1_trimmed.fastq.gz \ 
+CJ714_CJ715_R2_trimmed.fastq.gz | \ 
+samtools sort -o aligned_illumina.bam
+
+#7.2 Pilon Execution
+java -Xmx100G -jar pilon-1.24.jar \ 
+--genome medaka_final_polish/consensus.fasta \ 
+--frags aligned_illumina.bam \ 
+--outdir pilon_outputs\ 
+--changes\ 
+--threads 32
+
+### SCAFFOLDING WITH Hi-C ###
+
+# 8. Scaffolding with YaHS
+#8.1 Preprocessing
+bwa index pilon_outputs/pilon.fasta
+bwa mem -t 32 -5SP pilon_outputs/pilon.fasta \ 
+HiC_R1.fastq.gz \ 
+HiC_R2.fastq.gz | \
+samtools view -F 0x900 -b -o aligned_hic.bam
+
+samtools sort -n aligned_hic.bam -o aligned_hic_sorted.bam
+
+# 8.2 YaHS execution
+yahs pilon_outputs/pilon.fasta aligned_hic_sorted.bam
+
+# 8.3 Generate final files
+juicer pre -a -o out_JBAT yahs.out.bin yahs.out_scaffolds_final.agp pilon_outputs/pilon.fasta.fai
+juicer post -o out_JBAT out_JBAT.txt
+
+### ASSEMBLY EVALUATION ###
+
+# 9. BUSCO - Completeness evaluation
+busco -i out_scaffolds_final.fa \
+-l aves_odb10 \
+-o busco_final \
+-m genome \
+-c 32
+
+# 10. QUAST - Assembly Statistics
+quast.py out_scaffolds_final.fa \
+-o quast_final \
+--large \
+--est-ref-size 1200000000 \
+--threads 32
