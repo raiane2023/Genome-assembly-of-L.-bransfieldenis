@@ -54,7 +54,7 @@ java -Xmx100G -jar pilon-1.24.jar \
 --changes\ 
 --threads 32
 
-### SCAFFOLDING WITH Hi-C ###
+### SCAFFOLDING WITH yahs ###
 
 # 8. Scaffolding with YaHS
 # 8. Generate contig map from initial assembly
