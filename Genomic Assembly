@@ -1,4 +1,3 @@
-#!/bin/bash
 # Genomic Assembly Pipeline: Leucocarbo bransfieldensis
 # Combining ONT (Nanopore) + Illumina reads
 
