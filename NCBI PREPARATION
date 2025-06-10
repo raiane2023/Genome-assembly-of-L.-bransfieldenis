@@ -1,0 +1,22 @@
+Prepare files for submission
+Generate files in NCBI format
+
+funannotate util gff2tbl -g funannotate_annotated/annotate_results/Leucocarbo_bransfieldensis.gff3 \
+-f cleaned_assembly.fasta \
+-o genome.tbl
+
+funannotate util tbl2asn -i genome.tbl \
+-f genome.tbl \
+-o genome.sqn \
+-t template.sbt
+
+Final package for submission
+
+tar -czvf NCBI_submission_package.tar.gz \
+cleaned_assembly.fasta \
+funannotate_annotated/annotate_results/Leucocarbo_bransfieldensis.gff3 \ 
+funannotate_annotated/annotate_results/Leucocarbo_bransfieldensis.proteins.fa \ 
+funannotate_annotated/annotate_results/Leucocarbo_bransfieldensis.cds.fa \ 
+genome.sqn \ 
+busco_final/short_summary.specific.aves_odb10.busco_final.txt \ 
+quast_final/report.txt
