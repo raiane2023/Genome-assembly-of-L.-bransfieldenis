@@ -57,21 +57,14 @@ java -Xmx100G -jar pilon-1.24.jar \
 ### SCAFFOLDING WITH Hi-C ###
 
 # 8. Scaffolding with YaHS
-#8.1 Preprocessing
-bwa index pilon_outputs/pilon.fasta
-bwa mem -t 32 -5SP pilon_outputs/pilon.fasta \ 
-HiC_R1.fastq.gz \ 
-HiC_R2.fastq.gz | \
-samtools view -F 0x900 -b -o aligned_hic.bam
+# 8. Generate contig map from initial assembly
+flye --nano-hq Combined_reads_ont_filtered.fastq.gz --out-dir flye_assembly
 
-samtools sort -n aligned_hic.bam -o aligned_hic_sorted.bam
+# 8.1 Realign reads to assembly
+minimap2 -x map-ont flye_assembly/assembly.fasta Combined_reads_ont_filtered.fastq.gz > mappings.paf
 
-# 8.2 YaHS execution
-yahs pilon_outputs/pilon.fasta aligned_hic_sorted.bam
-
-# 8.3 Generate final files
-juicer pre -a -o out_JBAT yahs.out.bin yahs.out_scaffolds_final.agp pilon_outputs/pilon.fasta.fai
-juicer post -o out_JBAT out_JBAT.txt
+# 8.2 Run YaHS with realignment data
+yahs flye_assembly/assembly.fasta mappings.paf
 
 ### ASSEMBLY EVALUATION ###
 
