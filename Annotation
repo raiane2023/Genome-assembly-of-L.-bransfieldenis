@@ -1,0 +1,23 @@
+### ANNOTATION ###
+
+# 11. Annotation with Funannotate
+# 11.1 Preparation
+funannotate clean -i out_scaffolds_final.fa -o cleaned_assembly.fasta
+
+# 11.2 Gene prediction
+funannotate predict -i cleaned_assembly.fasta \
+-o funannotate_output \
+-s "Leucocarbo bransfieldensis" \
+--busco_db aves_odb10 \
+--cpus 32
+
+# 11.3 Functional annotation
+funannotate annotate -i funannotate_output \
+-o funannotate_annotated \
+--eggnog \
+--iprscan \
+--cpus 32
+Enviar feedback
+Painéis laterais
+Histórico
+Salvas
