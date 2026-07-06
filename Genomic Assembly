@@ -1,83 +1,108 @@
-# Genomic Assembly Pipeline: Leucocarbo bransfieldensis
-# Combining ONT (Nanopore) + Illumina reads
+# Complete Genome Assembly of the Antarctic Shag (Leucocarbo a. bransfieldensis)#
 
-### PRE-PROCESSING ###
+#Computational Workflow#
+1.	Raw ONT read quality assessment
+2.	ONT read filtering
+3.	Illumina read quality assessment
+4.	Hi-C read quality inspection
+5.	De novo genome assembly using Hifiasm
+6.	Primary assembly extraction
+7.	Assembly quality assessment
+8.	Hi-C read mapping
+9.	Hi-C-based scaffolding evaluation
+10.	Structural validation using Hi-C contact maps
+11.	Manual inspection of assembly structure
 
-# 1. Combine ONT reads
-cat fastq_pass/*.fastq.gz > Combined_reads_ont.fastq.gz
+#Software#
+Software ande Version	Purpose
+NanoPlot	1.42.0	ONT read quality assessment
+NanoFilt	2.8.0	ONT read filtering
+FastQC	0.11.9	Illumina read quality assessment
+Hifiasm	0.25.0-r726	De novo genome assembly
+BWA-MEM2	2.2.1	Hi-C read alignment
+SAMtools	1.20	BAM processing
+QUAST	5.2.0	Assembly statistics
+BUSCO	5.4.3	Genome completeness assessment
+YaHS	1.2a	Hi-C scaffolding evaluation
+Juicebox	1.11.08	Hi-C contact map visualization
 
-# 2. Quality control - ONT
-NanoPlot --fastq Combined_reads_ont.fastq.gz --loglength -o NanoPlot_Report
+#Sequencing Datasets#
+Oxford Nanopore Technologies (ONT)
+Metric	Value
 
-# 3. Filtering ONT reads
-gunzip -c Combined_reads_ont.fastq.gz | \
-NanoFilt -q 10 -l 1000 | \
-gzip > Combined_reads_ont_filtered.fastq.gz
+#Read Quality Control#
+Oxford Nanopore Reads
 
-# 4. Quality Control – Illumina
-fastp -i CJ714_CJ715_R1.trimmed.fastq.gz \ 
--I CJ714_CJ715_R2.trimmed.fastq.gz \ 
--o CJ714_CJ715_R1_trimmed.fastq.gz \ 
--O CJ714_CJ715_R2_trimmed.fastq.gz\ 
---html fastp_report.html \ 
---json fastp_report.json
+1. NanoPlot \
+--fastq Combined_reads_ont.fastq.gz \
+--loglength \
+-o NanoPlot
 
-### INITIAL ASSEMBLY ###
+2. gunzip -c Combined_reads_ont.fastq.gz | \
+NanoFilt -q 8 -l 1000 | \
+gzip > ONT_filtered_q8_l1000.fastq.gz
 
-# 5. Mounting with Flye (ONT)
-flye --nano-hq combined_reads_ont_filtered.fastq.gz \ 
---genome-size 1.2g\ 
---out-dir flye_assembly \ 
---threads 32
+3. Illumina Reads
+fastqc \
+R1.fastq.gz \
+R2.fastq.gz
 
-### POLISHING ###
+4. Genome Assembly
+Filtered ONT reads were supplied as long-read input, whereas Hi-C paired-end reads were provided using the --h1 and --h2 parameters.
+hifiasm \
+--ont \
+-t 80 \
+--h1 LB0111_good_1.fq.gz \
+--h2 LB0111_good_2.fq.gz \
+-o LB0111_ont_hic.asm \
+ONT_filtered_q8_l1000.fastq.gz
 
-# 6. Polishing with Medaka (ONT)
-medaka_consensus -i combined_reads_ont_filtered.fastq.gz \ 
--d flye_assembly/assembly.fasta\ 
--o medaka_final_polish\ 
--t 32
 
-# 7. Polishing with Pilon (Illumina)
-#7.1 Alignment
-bwa index medaka_final_polish/consensus.fasta
-bwa mem -t 32 medaka_final_polish/consensus.fasta \ 
-CJ714_CJ715_R1_trimmed.fastq.gz \ 
-CJ714_CJ715_R2_trimmed.fastq.gz | \ 
-samtools sort -o aligned_illumina.bam
-
-#7.2 Pilon Execution
-java -Xmx100G -jar pilon-1.24.jar \ 
---genome medaka_final_polish/consensus.fasta \ 
---frags aligned_illumina.bam \ 
---outdir pilon_outputs\ 
---changes\ 
---threads 32
-
-### SCAFFOLDING WITH yahs ###
-
-# 8. Scaffolding with YaHS
-# 8. Generate contig map from initial assembly
-flye --nano-hq Combined_reads_ont_filtered.fastq.gz --out-dir flye_assembly
-
-# 8.1 Realign reads to assembly
-minimap2 -x map-ont flye_assembly/assembly.fasta Combined_reads_ont_filtered.fastq.gz > mappings.paf
-
-# 8.2 Run YaHS with realignment data
-yahs flye_assembly/assembly.fasta mappings.paf
-
-### ASSEMBLY EVALUATION ###
-
-# 9. BUSCO - Completeness evaluation
-busco -i out_scaffolds_final.fa \
--l aves_odb10 \
--o busco_final \
--m genome \
--c 32
-
-# 10. QUAST - Assembly Statistics
-quast.py out_scaffolds_final.fa \
--o quast_final \
+5. Assembly Quality Assessment
+quast.py \
+LB0111_ont_hic.p_ctg.fa \
 --large \
---est-ref-size 1200000000 \
---threads 32
+-o quast
+Genome completeness was evaluated using BUSCO v5.4.3 with the Aves lineage dataset.
+Example command:
+busco \
+-i LB0111_ont_hic.p_ctg.fa \
+-l aves_odb10 \
+-o busco_aves \
+-m genome \
+-c 80
+
+
+6. Hi-C Read Mapping
+Representative commands:
+bwa-mem2 index LB0111_ont_hic.p_ctg.fa
+bwa-mem2 mem \
+-t 80 \
+LB0111_ont_hic.p_ctg.fa \
+LB0111_good_1.fq.gz \
+LB0111_good_2.fq.gz | \
+samtools sort \
+-o hic.sorted.bam
+
+samtools index hic.sorted.bam
+
+7. Hi-C Scaffolding Evaluation
+yahs \
+LB0111_ont_hic.p_ctg.fa \
+hic.sorted.bam
+
+8. Structural Validation
+Assembly structure was validated through Hi-C contact maps generated from mapped Hi-C reads.
+Contact matrices were manually inspected using Juicebox Assembly Tools (JBAT) to identify potential:
+Manual curation was performed only when supported by clear Hi-C interaction patterns.
+
+9. Assembly Statistics
+Primary Assembly
+Metric	Value
+Genome size	1,436,933,160 bp
+Number of sequences	457
+Largest scaffold	226,351,881 bp
+N50	81,206,669 bp
+L50	6
+GC content	43.98%
+
