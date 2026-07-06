@@ -1,23 +1,38 @@
 ### ANNOTATION ###
 
-# 11. Annotation with Funannotate
-# 11.1 Preparation
-funannotate clean -i out_scaffolds_final.fa -o cleaned_assembly.fasta
+Structural and Functional Genome Annotation
+1.	Repeat Identification and Masking
 
-# 11.2 Gene prediction
-funannotate predict -i cleaned_assembly.fasta \
--o funannotate_output \
--s "Leucocarbo bransfieldensis" \
---busco_db aves_odb10 \
---cpus 32
+buildDatabase -name LB0111_DB LB0111_ont_hic.p_ctg.fa
+repeatModeler -database LB0111_DB -threads 80
+repeatMasker -pa 80 -lib consensi.fa.classified -xsmall -gff LB0111_ont_hic.p_ctg.fa
 
-# 11.3 Functional annotation
-funannotate annotate -i funannotate_output \
--o funannotate_annotated \
---eggnog \
---iprscan \
---cpus 32
-Enviar feedback
-Painéis laterais
-Histórico
-Salvas
+2.	 Transcriptomic Evidence
+Public paired-end RNA-seq datasets (ERR12356292 and SRR10852993) were aligned against the masked genome using HISAT2 v2.2.1.
+hisat2-build LB0111_ont_hic.p_ctg.fa.masked LB0111_masked
+hisat2 -p 80 -x LB0111_masked -1 ERR12356292_1.fastq.gz -2 ERR12356292_2.fastq.gz | samtools sort -o ERR12356292.sorted.bam
+
+samtools index ERR12356292.sorted.bam
+3.	 Protein Evidence
+Protein sequences from Phalacrocorax carbo (bPhaCar2.1) and Gulosus aristotelis (bGulAri2.1) were filtered to remove proteins shorter than 50 amino acids and clustered with CD-HIT v4.8.1 at 99% identity to obtain a non-redundant protein dataset.
+cd-hit -i proteins.fa -o proteins_nr.fa -c 0.99 -T 80 -M 0
+4.	Gene Prediction
+braker.pl --genome=LB0111_ont_hic.p_ctg.fa.masked --bam=ERR12356292.sorted.bam,SRR10852993.sorted.bam --prot_seq=proteins_nr.fa --threads=80 –etpmode
+
+5.	 Annotation Assessment
+busco -i proteins.fa -l aves_odb10 -m proteins -c 80
+busco -i proteins.fa -l eukaryota_odb10 -m proteins -c 80
+
+6.	 Functional Annotation
+emapper.py -i proteins.fa -o eggnog -m diamond --cpu 80
+interproscan.sh -i proteins.fa -f tsv,gff3 -cpu 80
+
+#Final Outputs#
+ Soft-masked genome (FASTA)
+ Repeat annotation (GFF)
+ Gene annotation (GFF3)
+ Predicted transcripts (FASTA)
+ Predicted proteins (FASTA)
+ BUSCO reports
+ eggNOG annotation
+ InterProScan annotation
