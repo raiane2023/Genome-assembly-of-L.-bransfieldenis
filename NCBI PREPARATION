@@ -1,22 +1,60 @@
-Prepare files for submission
-Generate files in NCBI format
+NCBI Submission Preparation
+Prepare genome assembly files
+mkdir -p ncbi_submission
 
-funannotate util gff2tbl -g funannotate_annotated/annotate_results/Leucocarbo_bransfieldensis.gff3 \
--f cleaned_assembly.fasta \
--o genome.tbl
+cp 00_genome/LB0111_final.fa \
+ncbi_submission/LB0111_reference_genome.fa
 
-funannotate util tbl2asn -i genome.tbl \
--f genome.tbl \
--o genome.sqn \
--t template.sbt
+Prepare structural annotation files
+cp 08_final_annotation_candidates/LB0111_GeneMarkETP_supported.gtf \
+ncbi_submission/
 
-Final package for submission
+cp 08_final_annotation_candidates/LB0111_GeneMarkETP_supported.cds.fna \
+ncbi_submission/
 
-tar -czvf NCBI_submission_package.tar.gz \
-cleaned_assembly.fasta \
-funannotate_annotated/annotate_results/Leucocarbo_bransfieldensis.gff3 \ 
-funannotate_annotated/annotate_results/Leucocarbo_bransfieldensis.proteins.fa \ 
-funannotate_annotated/annotate_results/Leucocarbo_bransfieldensis.cds.fa \ 
-genome.sqn \ 
-busco_final/short_summary.specific.aves_odb10.busco_final.txt \ 
-quast_final/report.txt
+cp 08_final_annotation_candidates/LB0111_GeneMarkETP_supported.proteins.faa \
+ncbi_submission/
+
+Convert annotation to GFF3 (if required)
+gffread \
+LB0111_GeneMarkETP_supported.gtf \
+-T \
+-o LB0111_GeneMarkETP_supported.gff3
+
+Genome annotation validation
+Annotation quality was evaluated using BUSCO
+cp \
+07_busco_annotation/LB0111_GeneMarkETP_supported_BUSCO_aves/short_summary* \
+ncbi_submission/
+
+cp \
+07_busco_annotation/LB0111_GeneMarkETP_supported_BUSCO_euk/short_summary* \
+ncbi_submission/
+
+Functional annotation
+cp \
+09_functional_annotation/eggnog/LB0111_GeneMarkETP_eggnog.emapper.annotations \
+ncbi_submission/
+
+cp \
+09_functional_annotation/interproscan/LB0111_GeneMarkETP_interproscan.tsv \
+ncbi_submission/
+Assembly quality reports
+cp \
+
+Final submission package
+tar -czvf \
+LB0111_NCBI_submission_package.tar.gz \
+ncbi_submission/LB0111_reference_genome.fa
+
+Files
+LB0111_GeneMarkETP_supported.gff3
+LB0111_GeneMarkETP_supported.gtf
+LB0111_GeneMarkETP_supported.cds.fna
+LB0111_GeneMarkETP_supported.proteins.faa
+BUSCO reports
+QUAST report
+eggNOG annotations  .
+
+InterProScan annotationsast/report.txt \
+ncbi_submission/
