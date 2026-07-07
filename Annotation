@@ -1,15 +1,33 @@
 ### ANNOTATION ###
 #Purpose: This supplementary document describes the structural and functional annotation workflow used for the final reference genome assembly.
 
-Project structure
-The annotation directory structure was created as follows:
-mkdir -p annotation_2026/{00_genome,01_repeatmodeler,02_repeatmasker,03_braker3,04_proteins,05_rnaseq_sra,06_rnaseq_mapping,07_busco_annotation,08_final_annotation_candidates,09_functional_annotation,logs}
-cd annotation_2026
+Software
+Software	Version	Purpose
+RepeatModeler	2.0.7	Repeat library
+RepeatMasker	4.1.7	Repeat masking
+HISAT2	2.2.1	RNA-seq mapping
+BRAKER3	3.0.8	Gene prediction
+GeneMark-ETP	bundled	Gene prediction
+ProtHint	bundled	Protein hints
+AUGUSTUS	bundled	Gene prediction
+CD-HIT	4.8.1	Protein clustering
+BUSCO	5.4.3	Annotation completeness
+eggNOG-mapper	2.0.1	Functional annotation
+DIAMOND	2.1.10	Similarity searches
+InterProScan	5.74-105.0	Protein domains
 
-Repeat identification with RepeatModeler
-A de novo repeat library was generated from the final genome assembly using RepeatModeler.
-cd 01_repeatmodeler
+Input datasets
+RNA-seq evidence
+Dataset	Source
+ERR12356292	SRA
+SRR10852993	SRA
 
+Protein evidence
+Species	Assembly
+Phalacrocorax carbo	bPhaCar2.1
+Gulosus aristotelis	bGulAri2.1
+
+1.	Representative commands
 BuildDatabase \
 -name LB0111_db \
 ../00_genome/LB0111_final.fa
@@ -17,251 +35,103 @@ BuildDatabase \
 RepeatModeler \
 -database LB0111_db \
 -threads 56 \
--LTRStruct \
-2>&1 | tee ../logs/repeatmodeler.log
+-LTRStruct
 
-Repeat masking with RepeatMasker
-cd ../02_repeatmasker
-
+2.	Genome repeat masking
 RepeatMasker \
 -pa 56 \
 -lib ../01_repeatmodeler/LB0111_db-families.fa \
 -gff \
 -dir . \
-../00_genome/LB0111_final.fa \
-2>&1 | tee ../logs/repeatmasker.log
-Main output:
-LB0111_final.fa.masked
+../00_genome/LB0111_final.fa
 
-Protein evidence preparation
-Protein evidence was generated from Phalacrocorax carbo (bPhaCar2.1) and Gulosus aristotelis (bGulAri2.1)
-
-Filtering and cleaning Phalacrocorax carbo proteins
-cd ../04_proteins
-
-seqkit seq -m 50 Phalacrocorax_carbo_bPhaCar2.1.proteins.faa \
-> Phalacrocorax_carbo_bPhaCar2.1.proteins.min50.faa
-
-awk '
-/^>/ {print; next}
-{
-  gsub(/\./,"X")
-  gsub(/[^A-Za-z*]/,"X")
-  print
-}' Phalacrocorax_carbo_bPhaCar2.1.proteins.min50.faa \
-> Phalacrocorax_carbo_bPhaCar2.1.proteins.min50.clean.faa
-
-Downloading Gulosus aristotelis proteins
-wget https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/949/628/215/GCF_949628215.1_bGulAri2.1/GCF_949628215.1_bGulAri2.1_protein.faa.gz
-gunzip GCF_949628215.1_bGulAri2.1_protein.faa.gz
-
-Combining and clustering protein evidence
-cat \
-Phalacrocorax_carbo_bPhaCar2.1.proteins.min50.clean.faa \
-GCF_949628215.1_bGulAri2.1_protein.faa \
-> combined_Pcarbo_Garistotelis.raw.faa
-
-seqkit seq -m 50 combined_Pcarbo_Garistotelis.raw.faa \
-> combined_Pcarbo_Garistotelis.min50.faa
-
-cd-hit \
--i combined_Pcarbo_Garistotelis.min50.faa \
--o combined_Pcarbo_Garistotelis.min50.nr99.faa \
--c 0.99 \
--n 5 \
--T 56 \
--M 0
-Main output:
-combined_Pcarbo_Garistotelis.min50.nr99.faa
-
-RNA-seq evidence acquisition
-Two public paired-end RNA-seq datasets were downloaded from the NCBI Sequence Read Archive (SRA): ERR12356292 and SRR10852993.
-ERR12356292
-cd ../05_rnaseq_sra
-
-mkdir -p ERR12356292
-cd ERR12356292
-
-prefetch ERR12356292
-
-fasterq-dump ERR12356292 \
---split-files \
---threads 16 \
---outdir .
-
-pigz -p 16 ERR12356292_1.fastq ERR12356292_2.fastq
-SRR10852993
-cd ../
-
-mkdir -p SRR10852993
-cd SRR10852993
-
-prefetch SRR10852993
-
-fasterq-dump SRR10852993 \
---split-files \
---threads 16 \
---outdir .
-
-pigz -p 16 SRR10852993_1.fastq SRR10852993_2.fastq
-
-RNA-seq mapping with HISAT2
-cd ../../06_rnaseq_mapping
-
-ln -s ../02_repeatmasker/LB0111_final.fa.masked genome.masked.fa
-
+3.	RNA-seq alignment
 hisat2-build \
 -p 56 \
 genome.masked.fa \
 LB0111_hisat2_index
 
-Mapping ERR12356292
 hisat2 \
 -p 56 \
 --dta \
 -x LB0111_hisat2_index \
--1 ../05_rnaseq_sra/ERR12356292/ERR12356292_1.fastq.gz \
--2 ../05_rnaseq_sra/ERR12356292/ERR12356292_2.fastq.gz \
-2> ERR12356292_hisat2.log | \
-samtools sort -@ 16 -o ERR12356292.sorted.bam
+-1 ERR12356292_1.fastq.gz \
+-2 ERR12356292_2.fastq.gz | \
+samtools sort \
+-o ERR12356292.sorted.bam
+*The same procedure was applied to dataset SRR10852993.
 
-samtools index ERR12356292.sorted.bam
-samtools flagstat ERR12356292.sorted.bam > ERR12356292.flagstat.txt
-
-Mapping SRR10852993
-hisat2 \
--p 56 \
---dta \
--x LB0111_hisat2_index \
--1 ../05_rnaseq_sra/SRR10852993/SRR10852993_1.fastq.gz \
--2 ../05_rnaseq_sra/SRR10852993/SRR10852993_2.fastq.gz \
-2> SRR10852993_hisat2.log | \
-samtools sort -@ 16 -o SRR10852993.sorted.bam
-
-samtools index SRR10852993.sorted.bam
-samtools flagstat SRR10852993.sorted.bam > SRR10852993.flagstat.txt
-
-BRAKER3 / GeneMark-ETP annotation
-Gene prediction was performed with BRAKER3 in ETP mode using both RNA-seq alignments and the non-redundant protein evidence set.
-
-Preparing BRAKER3 inputs and environment
-cd ../03_braker3
-
-mkdir -p input output logs
-
-ln -sf ../../02_repeatmasker/LB0111_final.fa.masked \
-input/LB0111_final.masked.fa
-
-ln -sf ../../04_proteins/combined_Pcarbo_Garistotelis.min50.nr99.faa \
-input/Pcarbo_Garistotelis.nr99.proteins.faa
-
-export PATH=/home/raiane/micromamba/envs/braker3_env/bin:/home/raiane/tools/gmetp_linux_64/bin:/home/raiane/tools/gmetp_linux_64/tools:$PATH
-
-export AUGUSTUS_CONFIG_PATH=/home/raiane/Long/assemblies/annotation_2026/03_braker3/augustus_config
-
-export GENEMARK_PATH=/home/raiane/tools/gmetp_linux_64/bin
-
-Running BRAKER3 in ETP mode
-perl /home/raiane/micromamba/envs/braker3_env/bin/braker.pl \
+4.	Evidence-guided gene prediction
+perl braker.pl \
 --genome=input/LB0111_final.masked.fa \
 --species=Leucocarbo_bransfieldensis_ETP \
---bam=../06_rnaseq_mapping/ERR12356292.sorted.bam,../06_rnaseq_mapping/SRR10852993.sorted.bam \
+--bam=ERR12356292.sorted.bam,SRR10852993.sorted.bam \
 --prot_seq=input/Pcarbo_Garistotelis.nr99.proteins.faa \
---PROTHINT_PATH=/home/raiane/tools/ProtHint/bin \
---workingdir=output/braker_ETP_rnaseq_protein \
 --threads=56 \
---gff3 \
-2>&1 | tee logs/braker3_ETP_run.log
+--gff3
 
-Extraction of GeneMark-ETP supported models
-The GeneMark-ETP supported gene models were selected as the final structural annotation candidates.
-cd ../
-
-mkdir -p 08_final_annotation_candidates
-
-cp 03_braker3/output/braker_ETP_rnaseq_protein/genemark_ETP_supported.proteins.faa \
-08_final_annotation_candidates/LB0111_GeneMarkETP_supported.proteins.faa
-
-cp 03_braker3/output/braker_ETP_rnaseq_protein/genemark_ETP_supported.cds.fna \
-08_final_annotation_candidates/LB0111_GeneMarkETP_supported.cds.fna
-
-cp 03_braker3/output/braker_ETP_rnaseq_protein/GeneMark-ETP/genemark_supported.gtf \
-08_final_annotation_candidates/LB0111_GeneMarkETP_supported.gtf
-
-BUSCO with aves_odb10
-cd 07_busco_annotation
+5.	Annotation completeness assessment
 
 busco \
--i ../08_final_annotation_candidates/LB0111_GeneMarkETP_supported.proteins.faa \
+-i LB0111_GeneMarkETP_supported.proteins.faa \
 -l aves_odb10 \
--o LB0111_GeneMarkETP_supported_BUSCO_aves \
 -m proteins \
 -c 56
-
-BUSCO with eukaryota_odb10
-busco \
--i ../08_final_annotation_candidates/LB0111_GeneMarkETP_supported.proteins.faa \
--l eukaryota_odb10 \
--o LB0111_GeneMarkETP_supported_BUSCO_euk \
--m proteins \
--c 56
-S2.10 Structural annotation statistics
-Final annotation statistics were calculated from the GeneMark-ETP supported GTF, protein FASTA, and CDS FASTA files.
-cd ../
-
-grep -o 'gene_id "[^"]*"' \
-08_final_annotation_candidates/LB0111_GeneMarkETP_supported.gtf \
-| sort -u | wc -l
-
-grep -o 'transcript_id "[^"]*"' \
-08_final_annotation_candidates/LB0111_GeneMarkETP_supported.gtf \
-| sort -u | wc -l
-
-grep -P "\tCDS\t" \
-08_final_annotation_candidates/LB0111_GeneMarkETP_supported.gtf \
-| wc -l
-
-grep -P "\tintron\t" \
-08_final_annotation_candidates/LB0111_GeneMarkETP_supported.gtf \
-| wc -l
-
-grep -P "\tstop_codon\t" \
-08_final_annotation_candidates/LB0111_GeneMarkETP_supported.gtf \
-| wc -l
-
-seqkit stats \
-08_final_annotation_candidates/LB0111_GeneMarkETP_supported.proteins.faa
-
-seqkit stats \
-08_final_annotation_candidates/LB0111_GeneMarkETP_supported.cds.fna
+* The same analysis was performed using the eukaryota_odb10 lineage dataset.
 
 Functional annotation
-Functional annotation of the predicted proteins was performed using eggNOG-mapper with DIAMOND, and conserved domains were identified using InterProScan.
-eggNOG-mapper
+6.	eggNOG-mapper
 emapper.py \
--i 08_final_annotation_candidates/LB0111_GeneMarkETP_supported.proteins.faa \
+-i LB0111_GeneMarkETP_supported.proteins.faa \
 -o LB0111_eggnog \
 -m diamond \
 --cpu 56
 
-InterProScan
+7.	InterProScan
 interproscan.sh \
--i 08_final_annotation_candidates/LB0111_GeneMarkETP_supported.proteins.faa \
+-i LB0111_GeneMarkETP_supported.proteins.faa \
 -f tsv,gff3 \
 -cpu 56
 
-Final outputs
-Soft-masked genome: 02_repeatmasker/LB0111_final.fa.masked
-Repeat annotation: 02_repeatmasker/*.gff
-Gene annotation: 08_final_annotation_candidates/LB0111_GeneMarkETP_supported.gtf
-Predicted transcripts / CDS: 08_final_annotation_candidates/LB0111_GeneMarkETP_supported.cds.fna
-Predicted proteins: 08_final_annotation_candidates/LB0111_GeneMarkETP_supported.proteins.faa
-BUSCO reports: 07_busco_annotation/
-eggNOG-mapper annotation: 09_functional_annotation/ or eggNOG output prefix LB0111_eggnog
-InterProScan annotation: InterProScan TSV and GFF3 outputs
+8.	Final annotation files
+Output	Description
+Soft-masked genome	Repeat-masked genome assembly
+Repeat annotation (GFF)	Repetitive element annotation
+GTF	Structural gene annotation
+CDS FASTA	Coding sequences
+Protein FASTA	Predicted proteins
+BUSCO reports	Annotation completeness assessment
+eggNOG annotation	Functional annotation
+InterProScan annotation	Conserved protein domains
 
-Final structural annotation candidate files
-08_final_annotation_candidates/
-LB0111_GeneMarkETP_supported.gtf
-LB0111_GeneMarkETP_supported.proteins.faa
-LB0111_GeneMarkETP_supported.cds.fna
+9.	 Structural annotation summary
+Feature	Value
+Protein-coding genes	17,691
+Predicted proteins	17,691
+BUSCO complete (aves_odb10)	-
+BUSCO complete (eukaryota_odb10)	-
+
+Functional annotation summary
+10.	Annotation	Value
+Proteins annotated by eggNOG-mapper	16,992
+Proteins with InterPro signatures	17,108
+Proteins assigned to at least one InterPro entry	16,048
+GO annotations	Present
+KEGG orthologs	Present
+COG functional categories	Present
+EC numbers	Present
+
+
+11.	Supplementary Method S2.3. Output directory structure
+annotation_2026/
+├── 00_genome/
+├── 01_repeatmodeler/
+├── 02_repeatmasker/
+├── 03_braker3/
+├── 04_proteins/
+├── 05_rnaseq_sra/
+├── 06_rnaseq_mapping/
+├── 07_busco_annotation/
+├── 08_final_annotation_candidates/
+├── 09_functional_annotation/
+└── logs/
