@@ -1,54 +1,40 @@
 # Complete Genome Assembly of the Antarctic Shag (Leucocarbo a. bransfieldensis)#
 
-#Computational Workflow#
-1.	Raw ONT read quality assessment
-2.	ONT read filtering
-3.	Illumina read quality assessment
-4.	Hi-C read quality inspection
-5.	De novo genome assembly using Hifiasm
-6.	Primary assembly extraction
-7.	Assembly quality assessment
-8.	Hi-C read mapping
-9.	Hi-C-based scaffolding evaluation
-10.	Structural validation using Hi-C contact maps
-11.	Manual inspection of assembly structure
+#Supplementary Method S2. Computational workflow
+1.	ONT read quality assessment 
+2.	ONT read filtering 
+3.	Illumina read quality assessment 
+4.	Hi-C library quality inspection 
+5.	De novo genome assembly using Hifiasm 
+6.	Extraction of the primary assembly 
+7.	Genome quality assessment 
+8.	Hi-C read alignment 
+9.	Hi-C scaffolding evaluation 
+10.	Structural validation using Hi-C contact maps 
+11.	Manual inspection of Hi-C interaction maps 
+12.	Structural and functional genome annotation 
 
-#Software#
-Software ande Version	Purpose
-NanoPlot	1.42.0	ONT read quality assessment
-NanoFilt	2.8.0	ONT read filtering
-FastQC	0.11.9	Illumina read quality assessment
-Hifiasm	0.25.0-r726	De novo genome assembly
-BWA-MEM2	2.2.1	Hi-C read alignment
-SAMtools	1.20	BAM processing
-QUAST	5.2.0	Assembly statistics
-BUSCO	5.4.3	Genome completeness assessment
-YaHS	1.2a	Hi-C scaffolding evaluation
-Juicebox	1.11.08	Hi-C contact map visualization
 
 #Sequencing Datasets#
 Oxford Nanopore Technologies (ONT)
 Metric	Value
 
-#Read Quality Control#
-Oxford Nanopore Reads
-
-1. NanoPlot \
+1.	Oxford Nanopore read quality control
+NanoPlot \
 --fastq Combined_reads_ont.fastq.gz \
 --loglength \
 -o NanoPlot
 
-2. gunzip -c Combined_reads_ont.fastq.gz | \
+gunzip -c Combined_reads_ont.fastq.gz | \
 NanoFilt -q 8 -l 1000 | \
 gzip > ONT_filtered_q8_l1000.fastq.gz
 
-3. Illumina Reads
+2.	Illumina read quality assessment
 fastqc \
 R1.fastq.gz \
 R2.fastq.gz
 
-4. Genome Assembly
-Filtered ONT reads were supplied as long-read input, whereas Hi-C paired-end reads were provided using the --h1 and --h2 parameters.
+3.	Genome assembly
 hifiasm \
 --ont \
 -t 80 \
@@ -57,14 +43,13 @@ hifiasm \
 -o LB0111_ont_hic.asm \
 ONT_filtered_q8_l1000.fastq.gz
 
-
-5. Assembly Quality Assessment
+4.	Genome quality assessment
 quast.py \
 LB0111_ont_hic.p_ctg.fa \
 --large \
 -o quast
-Genome completeness was evaluated using BUSCO v5.4.3 with the Aves lineage dataset.
-Example command:
+
+5.	BUSCO analysis
 busco \
 -i LB0111_ont_hic.p_ctg.fa \
 -l aves_odb10 \
@@ -72,10 +57,9 @@ busco \
 -m genome \
 -c 80
 
-
-6. Hi-C Read Mapping
-Representative commands:
+6.	Hi-C read mapping
 bwa-mem2 index LB0111_ont_hic.p_ctg.fa
+
 bwa-mem2 mem \
 -t 80 \
 LB0111_ont_hic.p_ctg.fa \
@@ -84,17 +68,15 @@ LB0111_good_2.fq.gz | \
 samtools sort \
 -o hic.sorted.bam
 
-samtools index hic.sorted.bam
+7.	samtools index hic.sorted.bam
+Hi-C scaffolding evaluation
 
-7. Hi-C Scaffolding Evaluation
 yahs \
 LB0111_ont_hic.p_ctg.fa \
 hic.sorted.bam
 
-8. Structural Validation
-Assembly structure was validated through Hi-C contact maps generated from mapped Hi-C reads.
-Contact matrices were manually inspected using Juicebox Assembly Tools (JBAT) to identify potential:
-Manual curation was performed only when supported by clear Hi-C interaction patterns.
+8.	Supplementary Method S4. Structural validation
+Assembly structure was evaluated using Hi-C contact matrices generated from mapped Hi-C reads. Contact maps were visually inspected using Juicebox Assembly Tools (JBAT) to identify potential misassemblies, inversions, orientation errors, and spurious joins. 
 
 9. Assembly Statistics
 Primary Assembly
