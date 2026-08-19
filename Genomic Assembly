@@ -1,23 +1,26 @@
 # Complete Genome Assembly of the Antarctic Shag (Leucocarbo a. bransfieldensis)#
 
-#Supplementary Method S2. Computational workflow
+# Supplementary Method 
+
+S2. Computational workflow
 1.	ONT read quality assessment 
 2.	ONT read filtering 
 3.	Illumina read quality assessment 
 4.	Hi-C library quality inspection 
-5.	De novo genome assembly using Hifiasm 
-6.	Extraction of the primary assembly 
-7.	Genome quality assessment 
-8.	Hi-C read alignment 
-9.	Hi-C scaffolding evaluation 
-10.	Structural validation using Hi-C contact maps 
-11.	Manual inspection of Hi-C interaction maps 
-12.	Structural and functional genome annotation 
+5.	De novo genome assembly using Hifiasm with ONT and Hi-C data 
+6.	Extraction of the primary and haplotype assemblies 
+7.	K-mer counting from Illumina reads using Meryl (k = 21) 
+8.	Genome characterization using GenomeScope2 
+9.	K-mer-based assembly evaluation using Merqury 
+10.	Genome contiguity and completeness assessment 
+11.	Assessment of residual haplotypic duplications 
+12.	Hi-C read alignment to the primary assembly 
+13.	Hi-C-based scaffolding using YaHS for structural assessment 
+14.	Generation of Hi-C contact maps 
+15.	Manual inspection and structural validation of the assembly using Hi-C interaction maps
 
 
-#Sequencing Datasets#
-Oxford Nanopore Technologies (ONT)
-Metric	Value
+Representative command lines
 
 1.	Oxford Nanopore read quality control
 NanoPlot \
@@ -35,56 +38,161 @@ R1.fastq.gz \
 R2.fastq.gz
 
 3.	Genome assembly
+
 hifiasm \
---ont \
--t 80 \
---h1 LB0111_good_1.fq.gz \
---h2 LB0111_good_2.fq.gz \
--o LB0111_ont_hic.asm \
-ONT_filtered_q8_l1000.fastq.gz
+  --ont \
+  -t 80 \
+  --h1 LB0111_good_1.fq.gz \
+  --h2 LB0111_good_2.fq.gz \
+  -o LB0111_ont_hic \
+  ONT_filtered_q8_l1000.fastq.gz
 
 4.	Genome quality assessment
 quast.py \
-LB0111_ont_hic.p_ctg.fa \
---large \
--o quast
+  LB0111_ont_hic.p_ctg.fa \
+  --large \
+  -o quast
 
 5.	BUSCO analysis
 busco \
--i LB0111_ont_hic.p_ctg.fa \
--l aves_odb10 \
--o busco_aves \
--m genome \
--c 80
+  -i LB0111_ont_hic.p_ctg.fa \
+  -l aves_odb10 \
+  -o busco_assembly_aves \
+  -m genome \
+  -c 80
+6.	K-mer counting
+meryl k=21 count \
+  LB0111_Illumina_R1.fastq.gz \
+  output R1.k21.meryl
 
-6.	Hi-C read mapping
+meryl k=21 count \
+  LB0111_Illumina_R2.fastq.gz \
+  output R2.k21.meryl
+
+meryl union-sum \
+  R1.k21.meryl \
+  R2.k21.meryl \
+  output LB0111.k21.meryl
+7.	GenomeScope2 analysis
+meryl histogram \
+  LB0111.k21.meryl \
+  > LB0111.k21.hist
+
+genomescope.R \
+  -i LB0111.k21.hist \
+  -k 21 \
+  -p 2 \
+  -o genomescope
+8.	Merqury assembly evaluation
+merqury.sh \
+  LB0111.k21.meryl \
+  LB0111_ont_hic.hap1.p_ctg.fa \
+  LB0111_ont_hic.hap2.p_ctg.fa \
+  LB0111_haplotypes
+
+9.	Hifiasm
+hifiasm \
+  --ont \
+  -t 80 \
+  --h1 /home/raiane/Long/HiC/LB0111_good_1.fq.gz \
+  --h2 /home/raiane/Long/HiC/LB0111_good_2.fq.gz \
+  -o LB0111_ont_hic \
+  ONT_filtered_q8_l1000.fastq.gz
+
+10.	Telomeric repeat detection
+import re
+import csv
+
+fasta = "../LB0111_ont_hic.p_ctg.fa"
+window = 100000
+min_repeats = 5
+
+left_pattern = re.compile(r"(?:CCCTAA){" + str(min_repeats) + r",}")
+right_pattern = re.compile(r"(?:TTAGGG){" + str(min_repeats) + r",}")
+
+def read_fasta(path):
+    name = None
+    seq_parts = []
+
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+
+            if line.startswith(">"):
+                if name is not None:
+                    yield name, "".join(seq_parts)
+
+                name = line[1:].split()[0]
+                seq_parts = []
+            else:
+                seq_parts.append(line)
+
+        if name is not None:
+            yield name, "".join(seq_parts)
+
+rows = []
+
+for name, seq in read_fasta(fasta):
+    seq = seq.upper()
+    length = len(seq)
+
+    left = seq[:min(window, length)]
+    right = seq[-min(window, length):]
+
+    left_matches = list(left_pattern.finditer(left))
+    right_matches = list(right_pattern.finditer(right))
+
+    left_tel = len(left_matches) > 0
+    right_tel = len(right_matches) > 0
+
+    left_max = max(
+        [(m.end() - m.start()) // 6 for m in left_matches],
+        default=0
+    )
+
+    right_max = max(
+        [(m.end() - m.start()) // 6 for m in right_matches],
+        default=0
+    )
+
+    if left_tel and right_tel:
+        classification = "Two_telomeres"
+    elif left_tel or right_tel:
+        classification = "One_telomere"
+    else:
+        classification = "No_telomere"
+
+    rows.append([
+        name,
+        length,
+        left_max,
+        right_max,
+        "Yes" if left_tel else "No",
+        "Yes" if right_tel else "No",
+        classification
+    ])
+
+rows.sort(key=lambda x: x[1], reverse=True)
+
+11.	Hi-C read mapping
 bwa-mem2 index LB0111_ont_hic.p_ctg.fa
 
 bwa-mem2 mem \
--t 80 \
-LB0111_ont_hic.p_ctg.fa \
-LB0111_good_1.fq.gz \
-LB0111_good_2.fq.gz | \
-samtools sort \
--o hic.sorted.bam
+  -5SP \
+  -t 80 \
+  LB0111_ont_hic.p_ctg.fa \
+  LB0111_good_1.fq.gz \
+  LB0111_good_2.fq.gz | \
+  samtools sort \
+  -@ 80 \
+  -o hic.sorted.bam
 
-7.	samtools index hic.sorted.bam
-Hi-C scaffolding evaluation
+samtools index hic.sorted.bam
+
+12.	Hi-C scaffolding with YaHS
+
+samtools index hic.sorted.bam
 
 yahs \
 LB0111_ont_hic.p_ctg.fa \
 hic.sorted.bam
-
-8.	Supplementary Method S4. Structural validation
-Assembly structure was evaluated using Hi-C contact matrices generated from mapped Hi-C reads. Contact maps were visually inspected using Juicebox Assembly Tools (JBAT) to identify potential misassemblies, inversions, orientation errors, and spurious joins. 
-
-9. Assembly Statistics
-Primary Assembly
-Metric	Value
-Genome size	1,436,933,160 bp
-Number of sequences	457
-Largest scaffold	226,351,881 bp
-N50	81,206,669 bp
-L50	6
-GC content	43.98%
-
