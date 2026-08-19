@@ -1,33 +1,32 @@
 ### ANNOTATION ###
 #Purpose: This supplementary document describes the structural and functional annotation workflow used for the final reference genome assembly.
 
-Software
-Software	Version	Purpose
-RepeatModeler	2.0.7	Repeat library
-RepeatMasker	4.1.7	Repeat masking
-HISAT2	2.2.1	RNA-seq mapping
-BRAKER3	3.0.8	Gene prediction
-GeneMark-ETP	bundled	Gene prediction
-ProtHint	bundled	Protein hints
-AUGUSTUS	bundled	Gene prediction
+- Software -
+RepeatModeler	2.0.7	De novo repeat library construction
+RepeatMasker	4.1.7	Repeat identification and masking
+HISAT2	2.2.1	RNA-seq alignment
+BRAKER3	3.0.8	Evidence-guided gene prediction
+GeneMark-ETP	bundled with BRAKER3	Gene prediction and training
+ProtHint	bundled with BRAKER3	Protein-derived extrinsic evidence
+AUGUSTUS	bundled with BRAKER3	Final evidence-supported gene prediction
 CD-HIT	4.8.1	Protein clustering
-BUSCO	5.4.3	Annotation completeness
+BUSCO	5.4.6	Structural annotation completeness
 eggNOG-mapper	2.0.1	Functional annotation
-DIAMOND	2.1.10	Similarity searches
-InterProScan	5.74-105.0	Protein domains
+DIAMOND	2.1.10	Protein similarity searches
+InterProScan	5.74-105.0	Protein family and domain annotation
 
-Input datasets
+#Input datasets
 RNA-seq evidence
 Dataset	Source
 ERR12356292	SRA
 SRR10852993	SRA
 
-Protein evidence
-Species	Assembly
+#Protein evidence
+#Species	Assembly
 Phalacrocorax carbo	bPhaCar2.1
 Gulosus aristotelis	bGulAri2.1
 
-1.	Representative commands
+20.	Representative commands
 BuildDatabase \
 -name LB0111_db \
 ../00_genome/LB0111_final.fa
@@ -37,7 +36,7 @@ RepeatModeler \
 -threads 56 \
 -LTRStruct
 
-2.	Genome repeat masking
+21.	Genome repeat masking
 RepeatMasker \
 -pa 56 \
 -lib ../01_repeatmodeler/LB0111_db-families.fa \
@@ -45,7 +44,7 @@ RepeatMasker \
 -dir . \
 ../00_genome/LB0111_final.fa
 
-3.	RNA-seq alignment
+22.	RNA-seq alignment
 hisat2-build \
 -p 56 \
 genome.masked.fa \
@@ -59,9 +58,11 @@ hisat2 \
 -2 ERR12356292_2.fastq.gz | \
 samtools sort \
 -o ERR12356292.sorted.bam
+
 *The same procedure was applied to dataset SRR10852993.
 
-4.	Evidence-guided gene prediction
+
+23.	Evidence-guided gene prediction
 perl braker.pl \
 --genome=input/LB0111_final.masked.fa \
 --species=Leucocarbo_bransfieldensis_ETP \
@@ -70,49 +71,50 @@ perl braker.pl \
 --threads=56 \
 --gff3
 
-5.	Annotation completeness assessment
+24.	Structural annotation completeness assessment
+# Annotation completeness assessment
+# One representative protein isoform per gene (longest isoform)
 
 busco \
--i LB0111_GeneMarkETP_supported.proteins.faa \
+-i Augustus/augustus.longest_isoform.aa \
 -l aves_odb10 \
+-o busco_augustus_longest_isoform_aves \
 -m proteins \
--c 56
-* The same analysis was performed using the eukaryota_odb10 lineage dataset.
+-c 80
+
 
 Functional annotation
-6.	eggNOG-mapper
+
+25.	eggNOG-mapper
 emapper.py \
 -i LB0111_GeneMarkETP_supported.proteins.faa \
--o LB0111_eggnog \
+-o LB0111_GeneMarkETP_eggnog \
 -m diamond \
 --cpu 56
 
-7.	InterProScan
+26.	InterProScan
 interproscan.sh \
 -i LB0111_GeneMarkETP_supported.proteins.faa \
 -f tsv,gff3 \
 -cpu 56
 
-8.	Final annotation files
+27.	Final annotation files
+
 Output	Description
 Soft-masked genome	Repeat-masked genome assembly
 Repeat annotation (GFF)	Repetitive element annotation
-GTF	Structural gene annotation
-CDS FASTA	Coding sequences
-Protein FASTA	Predicted proteins
-BUSCO reports	Annotation completeness assessment
-eggNOG annotation	Functional annotation
-InterProScan annotation	Conserved protein domains
+AUGUSTUS GTF/GFF3	Final structural gene annotation
+AUGUSTUS CDS FASTA	Predicted coding sequences
+AUGUSTUS protein FASTA	Predicted proteins
+AUGUSTUS longest-isoform protein FASTA	One representative protein per gene used for BUSCO
+BUSCO reports	Structural annotation completeness assessment
+eggNOG-mapper output	Functional characterization of the GeneMark-ETP-supported protein set
+InterProScan output	Protein domain characterization of the GeneMark-ETP-supported protein set
 
-9.	 Structural annotation summary
-Feature	Value
-Protein-coding genes	17,691
-Predicted proteins	17,691
-BUSCO complete (aves_odb10)	-
-BUSCO complete (eukaryota_odb10)	-
 
-Functional annotation summary
-10.	Annotation	Value
+Functional characterization of the GeneMark-ETP-supported protein set
+
+Annotation	Value
 Proteins annotated by eggNOG-mapper	16,992
 Proteins with InterPro signatures	17,108
 Proteins assigned to at least one InterPro entry	16,048
@@ -120,18 +122,3 @@ GO annotations	Present
 KEGG orthologs	Present
 COG functional categories	Present
 EC numbers	Present
-
-
-11.	Supplementary Method S2.3. Output directory structure
-annotation_2026/
-├── 00_genome/
-├── 01_repeatmodeler/
-├── 02_repeatmasker/
-├── 03_braker3/
-├── 04_proteins/
-├── 05_rnaseq_sra/
-├── 06_rnaseq_mapping/
-├── 07_busco_annotation/
-├── 08_final_annotation_candidates/
-├── 09_functional_annotation/
-└── logs/
